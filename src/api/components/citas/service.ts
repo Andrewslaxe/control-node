@@ -1,0 +1,92 @@
+import { CreationError, UpdateError, DeleteError, RecordNotFoundError, GetAllError } from "../../../utils/customErrors";
+import logger from "../../../utils/logger";
+import { AppointmentReq, Appointment, AppointmentResDB } from "./model";
+import { AppointmentRepository } from "./repository";
+import { DoctorRepository } from "../doctores/repository";
+import { Doctor } from "../doctores/model";
+
+export interface AppointmentService {
+	getAllAppointments(): Promise<Appointment[]>;
+	createAppointment(patientReq: AppointmentReq): Promise<Appointment>;
+	getAppointmentById(id: number): Promise<Appointment>;
+	updateAppointment(id: number, updates: Partial<AppointmentReq>): Promise<void>;
+	deleteAppointment(id: number): Promise<void>;
+
+}
+
+
+export class AppointmentServiceImpl implements AppointmentService {
+	private appointmentRepository: AppointmentRepository;
+	private doctorRepository: DoctorRepository;
+
+	constructor(appointmentRepository: AppointmentRepository, doctorRepository: DoctorRepository) {
+		this.appointmentRepository = appointmentRepository;
+		this.doctorRepository = doctorRepository;
+	}
+
+	public async getAllAppointments(): Promise<Appointment[]> {
+		try {
+			const patients = await this.appointmentRepository.getAllAppointment();
+			console.log(patients);
+			return patients;
+		} catch (error) {
+			logger.error(error);
+			throw new GetAllError("Appointment");
+		}
+	}
+
+	public async createAppointment(appointmentReq: AppointmentReq): Promise<Appointment> {
+		try {
+			const doctor = await this.doctorRepository.getDoctorById(appointmentReq.id_doctor);
+			if (!doctor) {
+				throw new Error("Doctor not found");
+			}
+			const appointmentDb = await this.appointmentRepository.createAppointment(appointmentReq);
+			const appointment: Appointment = mapAppointment(appointmentDb, doctor);
+			return appointment;
+		} catch (error) {
+			throw new CreationError("Appointment");
+		}
+	}
+
+	public async getAppointmentById(id: number): Promise<Appointment> {
+		try {
+			const appointmentDb = await this.appointmentRepository.getAppointmentById(id);
+			const doctor = await this.doctorRepository.getDoctorById(appointmentDb.id_doctor);
+			const appointment: Appointment = mapAppointment(appointmentDb, doctor);
+			return appointment;
+		} catch (error) {
+			logger.error('Failed to get appointment from service');
+			throw new RecordNotFoundError();
+		}
+	}
+
+	public async updateAppointment(id: number, updates: Partial<AppointmentReq>): Promise<void> {
+		try {
+			await this.appointmentRepository.updateAppointment(id, updates);
+		} catch (error) {
+			logger.error('Failed to update appointment from service');
+			throw new UpdateError('Appointment');
+		}
+	}
+
+	public async deleteAppointment(id: number): Promise<void> {
+		try {
+			await this.appointmentRepository.deleteAppointment(id);
+		} catch (error) {
+			logger.error('Failed to delete appointment from service');
+			throw new DeleteError('Appointment');
+		}
+	}
+}
+
+function mapAppointment(appointmentDb: AppointmentResDB, doctor: Doctor): Appointment {
+	const appointment: Appointment = {
+		identificacion_paciente: appointmentDb.identificacion_paciente,
+		especialidad: appointmentDb.especialidad,
+		doctor: doctor.nombre,
+		consultorio: doctor.consultorio,
+		horario: appointmentDb.horario
+	};
+	return appointment;
+}
